@@ -12,6 +12,7 @@
 //   - Fade-out old period then fade-in new period (smooth transitions)
 //   - Route "crawl" animation (dashed during crawl, no judder)
 // ✅ Curved routes (no plugin; safe)
+// ✅ Per-route curve overrides (optional) + automatic fan-out
 // ==============================
 
 const periodRange = document.getElementById("periodRange");
@@ -189,7 +190,8 @@ function fadeInMarker(marker, targetFillOpacity, durationMs = 450) {
 }
 
 // ===== Curved route helpers (NO plugin) =====
-function buildCurvedPoints(fromLatLng, toLatLng, steps = 28) {
+// ✅ UPDATED: supports per-route curve options: {strength, side, min, max}
+function buildCurvedPoints(fromLatLng, toLatLng, steps = 28, curveOpts = {}) {
   const zoom = map.getZoom();
   const p0 = map.project(fromLatLng, zoom);
   const p2 = map.project(toLatLng, zoom);
@@ -202,8 +204,17 @@ function buildCurvedPoints(fromLatLng, toLatLng, steps = 28) {
   const ux = -dy / len;
   const uy = dx / len;
 
-  // bend in pixels (scaled by distance, clamped)
-  const bend = Math.min(140, Math.max(50, len * 0.18));
+  // ✅ per-route overrides (all optional)
+  const strength = Number.isFinite(curveOpts.strength) ? curveOpts.strength : 0.18;
+  const minBend = Number.isFinite(curveOpts.min) ? curveOpts.min : 50;
+  const maxBend = Number.isFinite(curveOpts.max) ? curveOpts.max : 140;
+
+  // side should be 1 or -1 (default 1)
+  const sideRaw = curveOpts.side;
+  const side = (sideRaw === -1 || sideRaw === 1) ? sideRaw : 1;
+
+  // bend in pixels (scaled by distance, clamped) and then side applied
+  const bend = Math.min(maxBend, Math.max(minBend, len * strength)) * side;
 
   // control point in projected space
   const mx = (p0.x + p2.x) / 2;
@@ -438,8 +449,19 @@ function drawForPeriod(periodIndex) {
         const to = L.latLng(Number(r.toLat), Number(r.toLng));
         if (!Number.isFinite(from.lat) || !Number.isFinite(from.lng) || !Number.isFinite(to.lat) || !Number.isFinite(to.lng)) continue;
 
+        // ✅ NEW: per-route curve overrides (optional) + automatic fan-out
+        const c = r.curve || {};
+        const autoSide = (routeIndex % 2 === 0) ? 1 : -1;
+
+        const curveOpts = {
+          strength: (c.strength != null) ? Number(c.strength) : undefined,
+          min:      (c.min != null) ? Number(c.min) : undefined,
+          max:      (c.max != null) ? Number(c.max) : undefined,
+          side:     (c.side === 1 || c.side === -1) ? c.side : autoSide
+        };
+
         // ✅ CHANGED: curved points + curved crawl
-        const curvePts = buildCurvedPoints(from, to, 28);
+        const curvePts = buildCurvedPoints(from, to, 28, curveOpts);
 
         const routeLine = L.polyline(curvePts.slice(0, 2), {
           color: routeColor(r.influence),
