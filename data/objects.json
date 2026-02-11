@@ -437,6 +437,8 @@
         "toLng": 36.0,
         "influence": "Culture",
         "toLabel": "Aman"
+        "curve": { "strength": 0.08, "min": 10, "max": 60, "side": -1 }
+
       }
     ]
   },
